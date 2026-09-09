@@ -98,16 +98,13 @@ body {
 .doc-item .meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
 .doc-item .page-range { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
 .doc-item .pr-label { font-size: 11px; color: var(--muted); white-space: nowrap; min-width: 1ch; text-align: center; user-select: none; }
-.doc-item .pr-start,
-.doc-item .pr-end {
+.doc-item .pr-input {
   font-variant-numeric: tabular-nums;
-  background: rgba(59,130,246,.14);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0 5px;
-  min-width: 1.8ch;
-  color: var(--text);
+  font-size: 11px; color: var(--text); width: 42px; text-align: center;
+  background: rgba(59,130,246,.14); border: 1px solid var(--border);
+  border-radius: 4px; padding: 0 4px; min-height: 20px; cursor: text;
 }
+.doc-item .pr-input:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
 
 /* Ползунок выбора первой/последней страницы.
    Собственная реализация на div-ах + свой mouse-drag обработчик (app.js: bindSlider),

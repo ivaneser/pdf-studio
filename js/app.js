@@ -151,6 +151,46 @@ function thumbStyle(field, doc, pct) {
   return `<div class="${cls}" data-field="${field}" style="${style};z-index:1;opacity:0"></div>`;
 }
 
+// Sync ONE document's slider DOM (fill + thumb positions + overlap stacking) and its
+// start/end inputs WITHOUT rebuilding the whole list. Used while editing the page-number
+// inputs so typing doesn't lose focus, and during a live drag settle.
+function refreshDocSlider(doc) {
+  const slider = docList.querySelector(`.page-slider[data-id="${doc.id}"]`);
+  if (!slider) return;
+  const pctStart = Math.max(0, Math.min(100, ((doc.start - 1) / Math.max(1, doc.pageCount - 1)) * 100));
+  const pctEnd = Math.max(pctStart, Math.min(100, ((doc.end - 1) / Math.max(1, doc.pageCount - 1)) * 100));
+  const fill = slider.querySelector('.ps-fill');
+  if (fill) { fill.style.left = pctStart + '%'; fill.style.width = (pctEnd - pctStart) + '%'; }
+  const startThumb = slider.querySelector('.ps-start');
+  const endThumb = slider.querySelector('.ps-end');
+  if (startThumb) startThumb.style.left = pctStart + '%';
+  if (endThumb) endThumb.style.left = pctEnd + '%';
+  // When the thumbs overlap they sit at the same left position; keep only one grabbable.
+  // Mirror liveUpdate(): bring last-grabbed thumb to front (z-index:2), hide the other via
+  // opacity:0 (CSS rule .ps-thumb[style*="opacity: 0"] { pointer-events: none }).
+  if (startThumb && endThumb) {
+    const overlap = Math.abs(pctStart - pctEnd) < 0.5;
+    if (overlap) {
+      const active = lastGrabbed === 'end' ? endThumb : startThumb;
+      const other = active === startThumb ? endThumb : startThumb;
+      active.style.opacity = '1';
+      active.style.top = '-3px';
+      active.style.zIndex = '2';
+      other.style.opacity = '0';
+      other.style.zIndex = '1';
+    } else {
+      startThumb.style.opacity = '1';
+      endThumb.style.opacity = '1';
+      startThumb.style.top = '-3px';
+      endThumb.style.top = '-3px';
+    }
+  }
+  const inStart = slider.querySelector('[data-role="start"]');
+  const inEnd = slider.querySelector('[data-role="end"]');
+  if (inStart) inStart.value = doc.start;
+  if (inEnd) inEnd.value = doc.end;
+}
+
 // Document list
 function renderList() {
   const docs = store.orderedDocs;
@@ -173,7 +213,7 @@ function renderList() {
         <div class="name" draggable="true">${doc.name}</div>
       </div>
       <div class="page-range">
-        <span class="pr-label pr-start" data-role="start">${doc.start}</span>
+        <input type="number" class="pr-input pr-start" data-role="start" data-id="${doc.id}" min="1" max="${doc.pageCount}" value="${doc.start}" step="1">
         <div class="page-slider" data-id="${doc.id}">
           <div class="ps-track">
             <div class="ps-fill" style="left:${pctStart}%;width:${pctEnd - pctStart}%"></div>
@@ -181,7 +221,7 @@ function renderList() {
             ${thumbStyle('end', doc, pctEnd)}
           </div>
         </div>
-        <span class="pr-label pr-end" data-role="end">${doc.end}</span>
+        <input type="number" class="pr-input pr-end" data-role="end" data-id="${doc.id}" min="1" max="${doc.pageCount}" value="${doc.end}" step="1">
       </div>
     `;
     docList.appendChild(li);
@@ -192,6 +232,53 @@ function renderList() {
 
   // Own drag handler for the slider: thumb moves with the mouse, no conflict with card DnD.
   docList.querySelectorAll('.page-slider').forEach((slider) => bindSlider(slider));
+  // Bind start/end page-number inputs so they can be edited directly (see bindRangeInputs).
+  bindRangeInputs();
+}
+
+// Bind keyboard handlers on the start/end page-number inputs so they can be edited
+// directly. Constraints (start in [1, pageCount], end in [1, pageCount], start <= end,
+// end >= start) are enforced by store.setRange(). A full renderList() is suppressed while
+// editing (rangeEditing flag) so focus isn't lost mid-typing; instead just that one slider
+// is synced via refreshDocSlider().
+function bindRangeInputs() {
+  docList.querySelectorAll('input[data-role="start"], input[data-role="end"]').forEach((input) => {
+    const slider = input.closest('.page-slider');
+    if (!slider) return;
+    const doc = store.docs.find((d) => d.id === slider.dataset.id);
+    if (!doc) return;
+
+    const commit = () => {
+      const raw = parseInt(input.value, 10);
+      if (Number.isNaN(raw)) return; // ignore empty / non-numeric input
+      const role = input.dataset.role;
+      const value = Math.max(1, Math.min(doc.pageCount, raw));
+      rangeEditing = true;
+      try {
+        if (role === 'start') {
+          // start must stay <= current end — clamp down rather than extending end.
+          store.setRange(doc.id, Math.min(value, doc.end), doc.end);
+        } else {
+          // end must stay >= current start — floor up rather than lowering start.
+          store.setRange(doc.id, doc.start, Math.max(value, doc.start));
+        }
+      } finally {
+        rangeEditing = false;
+      }
+      const d = store.docs.find((x) => x.id === slider.dataset.id);
+      if (d) refreshDocSlider(d);
+    };
+
+    input.addEventListener('change', commit);
+    // Enter also commits without losing focus.
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commit();
+        input.blur();
+      }
+    });
+  });
 }
 
 // Build preview once, then debounce further calls by 120ms. store.emit() fires on
@@ -204,6 +291,10 @@ let pendingPreview = false;
 // While dragging the slider — DON'T emit() to rebuild the list and preview.
 // liveUpdate itself updates only this slider, then on mouseup we do one full rebuild.
 let sliderDragging = false;
+// True while editing the start/end page-number inputs. Suppresses the full renderList()
+// rebuild on store.emit() so typing doesn't steal focus — we sync only that one slider via
+// refreshDocSlider(). Set around setRange(); reset after (before any pending async work).
+let rangeEditing = false;
 // Which thumb was grabbed last (module scope so it survives renderList(), which
 // rebuilds the whole list and strips inline styles). When a doc's start===end
 // both thumbs sit at the same left position, so we bring this one to the front.
@@ -223,6 +314,9 @@ store.subscribe(() => {
   // During slider drag DON'T rebuild the list and preview — liveUpdate itself
   // precisely updates only this slider so the thumb doesn't "jump" from rebuild.
   if (sliderDragging) return;
+  // While editing start/end inputs, don't rebuild the whole list either (it would steal
+  // focus mid-typing). refreshDocSlider() syncs just that one slider instead.
+  if (rangeEditing) return;
   renderList();
   if (store.orderedDocs.length > 0) schedulePreview();
 });
@@ -412,8 +506,9 @@ function bindSlider(slider) {
     if (range) {
       const startLabel = range.querySelector('[data-role="start"]');
       const endLabel = range.querySelector('[data-role="end"]');
-      if (startLabel) startLabel.textContent = start;
-      if (endLabel) endLabel.textContent = end;
+      // These are now <input type=number>, so set .value, not textContent.
+      if (startLabel) startLabel.value = start;
+      if (endLabel) endLabel.value = end;
     }
   };
 
