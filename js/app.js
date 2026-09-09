@@ -722,8 +722,6 @@ function makeBookmarklet(src) {
   return 'javascript:' + out.replace(/\s+/g, ' ').trim();
 }
 
-function setStatus(msg) { statusText.textContent = msg; }
-
 async function openSharePointBookmarklet() {
   const area = document.getElementById(SP_BM_CARD_ID);
   if (!area) return;
