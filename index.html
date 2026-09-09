@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Studio — всё в браузере</title>
+  <!--
+    importmap связывает имена модулей с локальными файлами.
+    Библиотеки грузятся из lib/, а НЕ из CDN -> PDF-файлы вообще не идут во внешние сети,
+    загрузка кода возможна по whitelist'у (или вообще offline).
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "pdf-lib": "./lib/pdf-lib-bundled.mjs"
+    }
+  }
+  </script>
+  <!-- PDF.js — UMD-сборка, ставит глобал window.pdfjsLib; грузим как обычный <script> -->
+  <script src="./lib/pdf.min.js"></script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>PDF&nbsp;Studio</h1>
+    <p class="tagline">Просмотр, объединение, вырезание страниц и печать — всё выполняется в вашем браузере.</p>
+  </header>
+
+  <main class="layout">
+    <!-- Левая панель: список документов -->
+    <aside class="sidebar">
+      <div class="card">
+        <h2>Документы</h2>
+        <button id="addBtn" class="btn btn-primary">+ Добавить PDF</button>
+        <input type="file" id="fileInput" accept="application/pdf" multiple hidden />
+        <ul id="docList" class="doc-list"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Действия</h2>
+        <button id="mergeBtn" class="btn" disabled>Объдинить и скачать</button>
+        <button id="printBtn" class="btn" disabled>Печать итога</button>
+      </div>
+
+      <details class="card">
+        <summary>Как это работает</summary>
+        <p>Весь код (pdf-lib + PDF.js) выполняется в вашем браузере. Ваши файлы никуда не отправляются — обработка происходит локально.</p>
+      </details>
+    </aside>
+
+    <!-- Правая панель: рабочая область -->
+    <section class="workspace">
+      <div id="dropHint" class="drop-hint">
+        Перетащите сюда PDF или нажмите «Добавить PDF» слева.
+      </div>
+      <div id="canvasArea" class="canvas-area"></div>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span id="statusText">Готово.</span>
+  </footer>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
