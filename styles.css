@@ -103,6 +103,13 @@ body {
   font-size: 11px; color: var(--text); width: 42px; text-align: center;
   background: rgba(59,130,246,.14); border: 1px solid var(--border);
   border-radius: 4px; padding: 0 4px; min-height: 20px; cursor: text;
+  /* Remove the up/down spinner increment buttons — manual input only. */
+  -webkit-appearance: none; appearance: none;
+  -moz-appearance: textfield;
+}
+.doc-item .pr-input::-webkit-outer-spin-button,
+.doc-item .pr-input::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
 }
 .doc-item .pr-input:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
 

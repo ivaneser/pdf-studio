@@ -248,11 +248,11 @@ function bindRangeInputs() {
     const doc = store.docs.find((d) => d.id === slider.dataset.id);
     if (!doc) return;
 
-    const commit = () => {
+    const applyValue = () => {
       const raw = parseInt(input.value, 10);
       if (Number.isNaN(raw)) return; // ignore empty / non-numeric input
       const role = input.dataset.role;
-      const value = Math.max(1, Math.min(doc.pageCount, raw));
+      let value = Math.max(1, Math.min(doc.pageCount, raw));
       rangeEditing = true;
       try {
         if (role === 'start') {
@@ -269,12 +269,15 @@ function bindRangeInputs() {
       if (d) refreshDocSlider(d);
     };
 
-    input.addEventListener('change', commit);
-    // Enter also commits without losing focus.
+    // Live update as the user types — sliders move to the matching position and an
+    // out-of-range value snaps to the nearest cap immediately.
+    input.addEventListener('input', applyValue);
+    input.addEventListener('change', applyValue);
+    // Enter also commits without losing focus, then blurs.
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        commit();
+        applyValue();
         input.blur();
       }
     });
