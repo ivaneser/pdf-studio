@@ -175,6 +175,11 @@ body {
 .page-render { position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.5); background: #fff; }
 .page-render canvas { display: block; border-radius: 2px; }
 
+@media (max-width: 720px) {
+  .page-render { width: 100%; max-width: 100vw; overflow: hidden; }
+  .page-render canvas { width: 100% !important; height: auto !important; }
+}
+
 .statusbar {
   padding: 8px 24px;
   border-top: 1px solid var(--border);
@@ -185,31 +190,30 @@ body {
 #statusText { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Мобильный просмотр (ширина экрана ≤ 720px): сайдбор и рабочая область
-   располагаются вертикально — одна под другой, а не рядом. Иначе при узком
-   экране правая колонка «сжимается» и превью исчезает. */
+   складываются в один прокручиваемый документ — одна под другой, общий скролл.
+   Никакого разделения экрана пополам: сначала сайдбор (список документов),
+   а ниже — превью страниц на весь экран. */
 @media (max-width: 720px) {
   body {
-    overflow: auto; /* весь скролл на мобильных — вертикальный */
+    overflow: auto; /* общий вертикальный скролл всей страницы */
   }
 
   .layout {
-    grid-template-columns: 1fr; /* одна колонка: сайдбор сверху, превью снизу */
-    grid-template-rows: auto 1fr;
+    display: flex; /* обычный поток сверху вниз вместо grid */
+    flex-direction: column;
     height: auto; /* не привязываем к 100vh — даём прокручиваться всему */
-    min-height: 0;
     align-self: auto;
   }
 
   .sidebar {
-    position: sticky;
-    top: 0;
-    max-height: 35vh; /* сайдбор не занимает весь экран на мобильных */
+    flex: 0 0 auto; /* сайдбор занимает свою естественную высоту, а не половину экрана */
+    max-height: none;
     border-right: none;
     border-bottom: 1px solid var(--border);
-    z-index: 2;
   }
 
   .workspace {
+    flex: 1 0 auto;
     min-height: 0;
   }
 }
