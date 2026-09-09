@@ -17,6 +17,16 @@ export class PdfStore {
     for (const fn of this.listeners) fn(this.docs);
   }
 
+  // Генерация уникального id. crypto.randomUUID работает только в
+  // «безопасных контекстах» (HTTPS / localhost / file://). На обычном
+  // HTTP с другого устройства его нет — тогда используем fallback.
+  genId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
   get orderedDocs() {
     // docs уже в порядке добавления — это и есть порядок слияния
     return this.docs;
@@ -27,7 +37,7 @@ export class PdfStore {
     const srcDoc = await mod.PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
     const pageCount = srcDoc.getPageCount();
     const doc = {
-      id: crypto.randomUUID(),
+      id: this.genId(),
       name,
       bytes: arrayBuffer,
       pageCount,
@@ -41,6 +51,27 @@ export class PdfStore {
 
   remove(id) {
     this.docs = this.docs.filter((d) => d.id !== id);
+    this.emit();
+  }
+
+  // Перемещение документа: переносит doc с позиции `from` на позицию `to`.
+  // Порядок в docs — это и есть порядок слияния, так что reorder меняет именно его.
+  move(fromId, toId) {
+    const from = this.docs.findIndex((d) => d.id === fromId);
+    const to = this.docs.findIndex((d) => d.id === toId);
+    if (from < 0 || to < 0) return;
+    const [moved] = this.docs.splice(from, 1);
+    this.docs.splice(to, 0, moved);
+    this.emit();
+  }
+
+  // Синхронизация порядка по заданной последовательности id (нужна после DnD).
+  reorderByIds(ids) {
+    const byId = new Map(this.docs.map((d) => [d.id, d]));
+    const ordered = ids.map((id) => byId.get(id)).filter(Boolean);
+    // добавляем документы, которых нет в списке (на случай потери ссылки)
+    for (const doc of this.docs) if (!byId.has(doc.id)) ordered.push(doc);
+    this.docs = ordered;
     this.emit();
   }
 

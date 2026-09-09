@@ -19,7 +19,8 @@ body {
   color: var(--text);
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh; /* жёсткая высота — layout и сайдбор ограничены экраном */
+  overflow: hidden; /* прокручивается только .sidebar, .workspace и .doc-list */
 }
 
 .topbar {
@@ -33,17 +34,34 @@ body {
 .layout {
   display: grid;
   grid-template-columns: 320px 1fr;
+  grid-template-rows: 1fr; /* единственная строка ровно по высоте — иначе растягивается под контент и workspace не скролится */
   flex: 1;
   min-height: 0;
+  height: calc(100vh - 96px); /* высоту шапки и статусбара (~48+40) вычитаем */
+  align-self: stretch; /* grid-ячейка не должна растягиваться под контент, а занимать отведённую высоту */
 }
 
+/* Сайдбар прокручивается независимо — остаётся на месте при скролле рабочей области */
 .sidebar {
   padding: 16px;
   border-right: 1px solid var(--border);
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  height: 100%; /* фиксированная сайдбор — прокручивается содержимое, а не весь layout */
+}
+
+.sidebar > .card {
+  flex: 0 1 auto; /* карточки занимают свою естественную высоту и не растягивают сайдбор */
+}
+
+/* Рабочая область прокручивается независимо — сайдбар не уезжает */
+.workspace {
+  padding: 16px;
+  overflow: auto;
+  position: relative;
 }
 
 .card {
@@ -53,6 +71,7 @@ body {
   padding: 12px;
 }
 .card h2 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; color: var(--muted); }
+.hint { margin: 0 0 8px; font-size: 11px; color: var(--muted); line-height: 1.3; }
 
 .btn {
   display: block;
@@ -73,13 +92,76 @@ body {
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
 
 .doc-list { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.doc-item { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
-.doc-item .name { font-size: 13px; word-break: break-all; }
+.doc-item { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 8px; user-select: none; }
+.doc-item .name-row { display: flex; align-items: center; gap: 6px; }
+.doc-item .name-row .name { font-size: 13px; word-break: break-all; cursor: grab; }
 .doc-item .meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
-.doc-item .page-range { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
-.doc-item input[type="number"] { width: 54px; padding: 3px; background: #0f172a; color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
-.doc-item .range-sep { color: var(--muted); }
-.doc-item .btn-del { margin-left: auto; color: var(--danger); background: none; border: none; cursor: pointer; font-size: 12px; }
+.doc-item .page-range { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
+.doc-item .pr-label { font-size: 11px; color: var(--muted); white-space: nowrap; min-width: 1ch; text-align: center; user-select: none; }
+.doc-item .pr-start,
+.doc-item .pr-end {
+  font-variant-numeric: tabular-nums;
+  background: rgba(59,130,246,.14);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+  min-width: 1.8ch;
+  color: var(--text);
+}
+
+/* Ползунок выбора первой/последней страницы.
+   Собственная реализация на div-ах + свой mouse-drag обработчик (app.js: bindSlider),
+   чтобы thumb двигался мышью и не конфликтовал с DnD карточки. */
+.doc-item .page-slider {
+  position: relative;
+  width: 120px;
+  height: 24px;
+}
+
+.doc-item .ps-track {
+  position: absolute;
+  left: 0; top: 6px;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(59,130,246,.25);
+}
+
+.doc-item .ps-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(59,130,246,.55), rgba(59,130,246,.55));
+  pointer-events: none;
+}
+
+.doc-item .ps-thumb {
+  position: absolute;
+  top: -3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+  cursor: grab;
+  transform: translateX(-50%); /* thumb центрируется по своему left */
+}
+
+.doc-item .ps-thumb:active { cursor: grabbing; background: #2563eb; }
+/* Кнопка удаления — иконка корзины, слева у имени файла (по вертикали выровнена). Увеличена для лучшей видимости. */
+.doc-item .btn-del {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; padding: 3px; margin-right: 2px;
+  color: var(--danger); background: none; border: none; cursor: pointer;
+  opacity: .85; border-radius: 4px; transition: opacity .15s ease, background .15s ease, transform .15s ease;
+}
+.doc-item .btn-del:hover { opacity: 1; background: rgba(239,68,68,.14); }
+.doc-item .btn-del:active { transform: scale(.92); }
+.doc-item .btn-del svg { display: block; width: 20px; height: 20px; }
+.doc-item.dragging { opacity: 0.4; }
+.doc-item.drop-before { box-shadow: inset 0 -2px 0 var(--accent); }
+.doc-item.drop-after { box-shadow: inset 0 2px 0 var(--accent); }
 
 .workspace { padding: 16px; overflow: auto; position: relative; }
 .drop-hint {

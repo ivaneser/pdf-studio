@@ -30,6 +30,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         ext = posixpath.splitext(path)[1].lower()
         return MIME_TYPES.get(ext, None)
 
+    def send_header(self, keyword, value):
+        # Жёсткое отсутствие кэша для JS/CSS/HTML — иначе браузер держит в памяти
+        # старый app.js/store.js и не видит новые изменения (crypto.randomUUID fix и др.)
+        if keyword.lower() in ('etag', 'last-modified'):
+            return
+        super().send_header(keyword, value)
+
+    def send_response(self, code, message=None):
+        super().send_response(code, message)
+        # Супер-метод отправляет свой cache-control/age — его гасим через send_header,
+        # поэтому шлём наш напрямую (иначе он бы тоже провалился на блокировке).
+        super().send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
+        super().send_header('Pragma', 'no-cache')
+
     def log_message(self, fmt, *args):
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
 
