@@ -726,12 +726,8 @@ async function openSharePointBookmarklet() {
   const area = document.getElementById(SP_BM_CARD_ID);
   if (!area) return;
 
-  // If already expanded, collapse it.
+  // Make sure the card is expanded when the button is pressed.
   const details = document.getElementById('spBmDetails');
-  if (details && details.open) {
-    details.open = false;
-    return;
-  }
   if (details) details.open = true;
 
   area.innerHTML = '';
