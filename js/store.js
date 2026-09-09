@@ -1,49 +1,31 @@
-// Хранилисво загрузленных PDF. Все данные живут в памяти браузера.
-// Никаких сетевых запросов к файлам здесь нет.
+// Central in-memory store for documents and their page ranges.
+// Emits on every change (add, remove, reorder, setRange) so the UI rebuilds.
 
-export class PdfStore {
+export class Store {
   constructor() {
-    // массив: { id, name, bytes (ArrayBuffer), pageCount, start: number, end: number }
-    this.docs = [];
-    this.listeners = new Set();
+    this.docs = []; // [{ id, name, bytes, pageCount, start, end }]
+    this._idSeq = 0;
+    this._listeners = new Set();
   }
 
   subscribe(fn) {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
+    this._listeners.add(fn);
+    return () => this._listeners.delete(fn);
   }
 
   emit() {
-    for (const fn of this.listeners) fn(this.docs);
+    for (const fn of this._listeners) fn(this.docs);
   }
 
-  // Генерация уникального id. crypto.randomUUID работает только в
-  // «безопасных контекстах» (HTTPS / localhost / file://). На обычном
-  // HTTP с другого устройства его нет — тогда используем fallback.
-  genId() {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-      return crypto.randomUUID();
-    }
-    return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  nextId() {
+    this._idSeq += 1;
+    return `doc_${Date.now().toString(36)}_${this._idSeq}`;
   }
 
-  get orderedDocs() {
-    // docs уже в порядке добавления — это и есть порядок слияния
-    return this.docs;
-  }
-
-  async add(arrayBuffer, name) {
-    const mod = await import('pdf-lib');
-    const srcDoc = await mod.PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
-    const pageCount = srcDoc.getPageCount();
-    const doc = {
-      id: this.genId(),
-      name,
-      bytes: arrayBuffer,
-      pageCount,
-      start: 1,
-      end: pageCount,
-    };
+  async add(bytes, name) {
+    const id = this.nextId();
+    const pageCount = await countPages(bytes); // all pages from the file
+    const doc = { id, name, bytes, pageCount, start: 1, end: pageCount };
     this.docs.push(doc);
     this.emit();
     return doc;
@@ -54,23 +36,10 @@ export class PdfStore {
     this.emit();
   }
 
-  // Перемещение документа: переносит doc с позиции `from` на позицию `to`.
-  // Порядок в docs — это и есть порядок слияния, так что reorder меняет именно его.
-  move(fromId, toId) {
-    const from = this.docs.findIndex((d) => d.id === fromId);
-    const to = this.docs.findIndex((d) => d.id === toId);
-    if (from < 0 || to < 0) return;
-    const [moved] = this.docs.splice(from, 1);
-    this.docs.splice(to, 0, moved);
-    this.emit();
-  }
-
-  // Синхронизация порядка по заданной последовательности id (нужна после DnD).
   reorderByIds(ids) {
     const byId = new Map(this.docs.map((d) => [d.id, d]));
+    // Validate from the DOM order — this is the merge order.
     const ordered = ids.map((id) => byId.get(id)).filter(Boolean);
-    // добавляем документы, которых нет в списке (на случай потери ссылки)
-    for (const doc of this.docs) if (!byId.has(doc.id)) ordered.push(doc);
     this.docs = ordered;
     this.emit();
   }
@@ -78,24 +47,28 @@ export class PdfStore {
   setRange(id, start, end) {
     const doc = this.docs.find((d) => d.id === id);
     if (!doc) return;
-    doc.start = Math.max(1, Math.min(start, doc.pageCount));
-    doc.end = Math.max(1, Math.min(end, doc.pageCount));
-    if (doc.start > doc.end) [doc.start, doc.end] = [doc.end, doc.start];
+    // Limit within available pages and don't overflow the range.
+    doc.start = Math.max(1, Math.min(doc.pageCount, start));
+    doc.end = Math.max(doc.start, Math.min(doc.pageCount, end));
     this.emit();
   }
 
-  // страницы для слияния: 0-based индексы pdf-lib
-  mergePageIndices() {
-    const indices = [];
-    for (const doc of this.docs) {
-      for (let p = doc.start - 1; p <= doc.end - 1; p++) indices.push(p);
-    }
-    return indices;
-  }
-
-  get isEmpty() {
-    return this.docs.length === 0;
+  get orderedDocs() {
+    return this.docs;
   }
 }
 
-export const store = new PdfStore();
+export const store = new Store();
+
+// Count pages from a PDF file via pdf-lib.
+async function countPages(bytes) {
+  try {
+    const { default: PDFDocument } = await import('pdf-lib');
+    const doc = await PDFDocument.load(bytes);
+    return doc.getPageCount(); // bundled pdf-lib uses getPageCount(), not getNumberOfPages()
+  } catch (err) {
+    // Fallback — one page if the file couldn't be read.
+    console.error('Failed to count pages:', err.message);
+    return 1;
+  }
+}
