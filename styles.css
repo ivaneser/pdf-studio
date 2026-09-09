@@ -149,6 +149,8 @@ body {
 }
 
 .doc-item .ps-thumb:active { cursor: grabbing; background: #2563eb; }
+/* Скрытый thumb (при слиянии двух) — не ловит касания, чтобы под ним был активный. */
+.doc-item .ps-thumb[style*="opacity: 0"] { pointer-events: none; }
 /* Кнопка удаления — иконка корзины, слева у имени файла (по вертикали выровнена). Увеличена для лучшей видимости. */
 .doc-item .btn-del {
   display: inline-flex; align-items: center; justify-content: center;

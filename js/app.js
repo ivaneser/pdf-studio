@@ -258,6 +258,72 @@ docList.addEventListener('drop', () => {
   dragId = null;
 });
 
+// Мобильный drag для изменения порядка карточек: mouse/drag-and-drop работает
+// только на ПК, поэтому здесь — отдельная система на touch-событиях. Держим палец
+// на имени >300ms (long-press) → начинаем перетаскивать → двигаем пальцем, плавно
+// «приливая» к соседним карточкам → отпускаем → фиксируем порядок в store.
+let touchDragId = null;
+let touchDragEl = null;
+let touchMoved = false;
+const LONG_PRESS_MS = 300;
+let longPressTimer = null;
+
+function cardForTouch(ev) {
+  const t = ev.touches ? ev.touches[0] : ev;
+  return document.elementFromPoint(t.clientX, t.clientY)?.closest('.doc-item') || null;
+}
+
+docList.addEventListener('touchstart', (e) => {
+  const nameEl = e.target.closest('.name');
+  if (!nameEl || !nameEl._dragId) return;
+  touchDragId = nameEl._dragId;
+  touchMoved = false;
+  longPressTimer = setTimeout(() => {
+    touchDragEl = docList.querySelector(`.doc-item[data-id="${touchDragId}"]`);
+    if (!touchDragEl) return;
+    touchDragEl.classList.add('dragging');
+    // Блокируем прокрутку/выделение пока тащим карточку.
+    document.body.style.userSelect = 'none';
+    document.body.style.overflow = 'hidden';
+  }, LONG_PRESS_MS);
+}, { passive: true });
+
+docList.addEventListener('touchmove', (e) => {
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  if (!touchDragEl) return;
+  touchMoved = true;
+  e.preventDefault(); // не даём скроллить страницу пальцем
+
+  const y = e.touches[0].clientY;
+  const target = cardForTouch(e);
+  if (!target || target === touchDragEl || target.dataset.id === touchDragId) return;
+
+  const rect = target.getBoundingClientRect();
+  const afterTarget = (y - rect.top) > rect.height / 2;
+  if (afterTarget) {
+    target.insertAdjacentElement('afterend', touchDragEl);
+  } else {
+    target.insertAdjacentElement('beforebegin', touchDragEl);
+  }
+}, { passive: false });
+
+docList.addEventListener('touchend', () => {
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  if (touchDragEl) {
+    touchDragEl.classList.remove('dragging');
+    document.body.style.userSelect = '';
+    document.body.style.overflow = '';
+    // Фиксируем порядок только если реально перетаскивали — иначе не ломаем tap.
+    if (touchMoved) {
+      const ids = [...docList.querySelectorAll('.doc-item')].map((li) => li.dataset.id);
+      if (ids.length) store.reorderByIds(ids);
+    }
+  }
+  touchDragId = null;
+  touchDragEl = null;
+  touchMoved = false;
+});
+
 // Свой обработчик drag для слайдера — thumb двигается мышью, без конфликта с DnD карточки.
 // Позиции дискретные: thumb привязан к целым номерам страниц (1..pageCount), а не к пикселям.
 function bindSlider(slider) {
@@ -265,6 +331,9 @@ function bindSlider(slider) {
   if (!doc) return;
   const track = slider.querySelector('.ps-track');
   let field = null;
+  // Поле thumb, который взяли последним. При слиянии двух thumbs показываем/оставляем
+  // активным ТОЛЬКО его — иначе на мобильных второй уже не достать пальцем.
+  let lastField = null;
 
   // Обновить ТОЛЬКО этот слайдер: заливку, позиции thumb и числовые подписи.
   // НЕ перерисовываем весь список (renderList) — иначе каждый mousemove во время
@@ -281,6 +350,29 @@ function bindSlider(slider) {
     const endThumb = slider.querySelector('.ps-end');
     if (startThumb) startThumb.style.left = pctStart + '%';
     if (endThumb) endThumb.style.left = pctEnd + '%';
+
+    // Два thumb «прилипают» друг к другу, когда их страницы совпадают. Тогда они
+    // визуально перекрываются и нижний уже не попасть пальцем/курсором. Раньше мы их
+    // сдвигали по вертикали — это неудобно на мобильных. Теперь при слиянии показываем
+    // и оставляем активным ТОЛЬКО тот thumb, который взяли последним (lastField): он
+    // под пальцем, а второй прячем (opacity: 0), чтобы его случайно не тащить. Как
+    // страницы снова расходятся — оба возвращаются в дефолтное положение.
+    if (startThumb && endThumb) {
+      const overlap = Math.abs(pctStart - pctEnd) < 0.5;
+      if (overlap) {
+        const active = lastField === 'end' ? endThumb : startThumb;
+        const other = active === startThumb ? endThumb : startThumb;
+        active.style.opacity = '1';
+        active.style.top = '-3px';
+        // Второй thumb остаётся на месте (left не трогаем), но прячем — он неактивен.
+        other.style.opacity = '0';
+      } else {
+        startThumb.style.opacity = '1';
+        endThumb.style.opacity = '1';
+        startThumb.style.top = '-3px';
+        endThumb.style.top = '-3px';
+      }
+    }
 
     // Числовые подписи: № первой страницы до слайдера, № последней — после.
     const range = slider.closest('.page-range');
@@ -326,15 +418,32 @@ function bindSlider(slider) {
     const thumb = e.target.closest('.ps-thumb');
     if (!thumb || !thumb.dataset.field) return;
     field = thumb.dataset.field;
+    // Запоминаем, какой именно thumb только что взяли — чтобы при слиянии показывать/
+    // оставлять активным ТОЛЬКО его (второй на мобильных уже не достать пальцем).
+    lastField = field;
     sliderDragging = true;
 
-    // Собственный mouse-drag — не даём событиям уйти на карточку/DnD.
-    e.preventDefault();
+    // Собственный drag — не даём событиям уйти на карточку/DnD. Поддерживаем и мышь,
+    // и тач: на мобильных mousemove не срабатывает, поэтому там ловим touchmove.
+    if (e.cancelable) e.preventDefault();
     document.body.style.userSelect = 'none';
-    const move = (ev) => commit(pctFromClientX(ev.clientX));
+
+    // X-координата для любого типа события (мышь или пальцем).
+    const getX = (ev) => {
+      if (ev.touches && ev.touches.length > 0) return ev.touches[0].clientX;
+      return ev.clientX;
+    };
+
+    const move = (ev) => {
+      commit(pctFromClientX(getX(ev)));
+      // Блокируем скролл страницы пальцем пока тянем слайдер.
+      if (ev.cancelable && ev.touches && ev.touches.length > 0) ev.preventDefault();
+    };
     const up = () => {
       document.removeEventListener('mousemove', move);
       document.removeEventListener('mouseup', up);
+      document.removeEventListener('touchmove', move);
+      document.removeEventListener('touchend', up);
       document.body.style.userSelect = '';
       field = null;
       sliderDragging = false;
@@ -342,11 +451,21 @@ function bindSlider(slider) {
       renderList();
       if (store.orderedDocs.length > 0) schedulePreview();
     };
-    document.addEventListener('mousemove', move);
-    document.addEventListener('mouseup', up);
+
+    const hasTouch = e.touches && e.touches.length > 0;
+    if (hasTouch) {
+      document.addEventListener('touchmove', move, { passive: false });
+      document.addEventListener('touchend', up);
+    } else {
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    }
   };
 
   slider.addEventListener('mousedown', onDown);
+  // На мобильных mousemove не срабатывает — ловим touchstart. НЕ passive, чтобы
+  // можно было preventDefault и заблокировать скролл страницы при начале drag'а.
+  slider.addEventListener('touchstart', onDown);
 }
 
 docList.addEventListener('click', (e) => {
