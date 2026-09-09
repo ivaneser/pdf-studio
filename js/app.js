@@ -139,8 +139,13 @@ function thumbStyle(field, doc, pct) {
   const cls = field === 'start' ? 'ps-thumb ps-start' : 'ps-thumb ps-end';
   const style = `left:${pct}%`;
   if (doc.start !== doc.end) return `<div class="${cls}" data-field="${field}" style="${style}"></div>`;
-  // Overlap: stack the last-grabbed thumb on top, hide the other.
-  if (lastGrabbed === field) {
+  // Overlap: both thumbs sit at the same left position, so DOM order decides stacking.
+  // .ps-end is later in the DOM and always paints on top of .ps-start — which would
+  // leave `start` unreachable. Bring the last-grabbed thumb to the front (z-index 2)
+  // and hide the other (opacity:0 + pointer-events:none via CSS). Default to `end`
+  // when nothing has been grabbed yet so a freshly-rendered merged slider is grabbable.
+  const onTopThumb = lastGrabbed || 'end';
+  if (field === onTopThumb) {
     return `<div class="${cls}" data-field="${field}" style="${style};z-index:2;opacity:1;top:-3px"></div>`;
   }
   return `<div class="${cls}" data-field="${field}" style="${style};z-index:1;opacity:0"></div>`;
