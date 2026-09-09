@@ -243,9 +243,9 @@ function renderList() {
 // is synced via refreshDocSlider().
 function bindRangeInputs() {
   docList.querySelectorAll('input[data-role="start"], input[data-role="end"]').forEach((input) => {
-    const slider = input.closest('.page-slider');
-    if (!slider) return;
-    const doc = store.docs.find((d) => d.id === slider.dataset.id);
+    // The slider is a SIBLING of the input (both live inside `.page-range`), so we
+    // can't use closest(); read the id straight from the input, which already has it.
+    const doc = store.docs.find((d) => d.id === input.dataset.id);
     if (!doc) return;
 
     const applyValue = () => {
@@ -265,15 +265,15 @@ function bindRangeInputs() {
       } finally {
         rangeEditing = false;
       }
-      const d = store.docs.find((x) => x.id === slider.dataset.id);
+      const d = store.docs.find((x) => x.id === input.dataset.id);
       if (d) refreshDocSlider(d);
     };
 
-    // Live update as the user types — sliders move to the matching position and an
-    // out-of-range value snaps to the nearest cap immediately.
-    input.addEventListener('input', applyValue);
+    // Commit on Enter or when the field loses focus — NOT instant per keystroke.
+    // The slider moves to the matching position right after each commit.
     input.addEventListener('change', applyValue);
-    // Enter also commits without losing focus, then blurs.
+    input.addEventListener('blur', applyValue);
+    // Enter commits without losing focus first, then blurs (double-safe).
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
