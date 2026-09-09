@@ -63,9 +63,12 @@ export const store = new Store();
 // Count pages from a PDF file via pdf-lib.
 async function countPages(bytes) {
   try {
-    const { default: PDFDocument } = await import('pdf-lib');
-    const doc = await PDFDocument.load(bytes);
-    return doc.getPageCount(); // bundled pdf-lib uses getPageCount(), not getNumberOfPages()
+    // Namespace import — this bundled lib has no `default` export, so the old
+    // `const { default: PDFDocument } = await import('pdf-lib')` threw and fell
+    // back to pageCount=1 (only one page rendered). Use a namespace import.
+    const mod = await import('pdf-lib');
+    const doc = await mod.PDFDocument.load(bytes);
+    return doc.getPageCount(); // bundled pdf-lib uses getPageCount()
   } catch (err) {
     // Fallback — one page if the file couldn't be read.
     console.error('Failed to count pages:', err.message);
