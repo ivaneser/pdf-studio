@@ -183,3 +183,33 @@ body {
   color: var(--muted);
 }
 #statusText { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Мобильный просмотр (ширина экрана ≤ 720px): сайдбор и рабочая область
+   располагаются вертикально — одна под другой, а не рядом. Иначе при узком
+   экране правая колонка «сжимается» и превью исчезает. */
+@media (max-width: 720px) {
+  body {
+    overflow: auto; /* весь скролл на мобильных — вертикальный */
+  }
+
+  .layout {
+    grid-template-columns: 1fr; /* одна колонка: сайдбор сверху, превью снизу */
+    grid-template-rows: auto 1fr;
+    height: auto; /* не привязываем к 100vh — даём прокручиваться всему */
+    min-height: 0;
+    align-self: auto;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    max-height: 35vh; /* сайдбор не занимает весь экран на мобильных */
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    z-index: 2;
+  }
+
+  .workspace {
+    min-height: 0;
+  }
+}
