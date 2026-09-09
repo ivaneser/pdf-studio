@@ -1,4 +1,4 @@
-// Главная логика приложения: связывает store, рендер и операции в UI.
+// Main app logic: wires store, rendering and UI operations together.
 
 import { store } from './store.js';
 import { mergeDocs, extractSingle, savePdf } from './operations.js';
@@ -20,15 +20,15 @@ function setStatus(msg) {
 async function handleFiles(files) {
   for (const file of files) {
     if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
-      setStatus(`Пропущено: ${file.name} — не PDF`);
+      setStatus(`Skipped: ${file.name} — not a PDF`);
       continue;
     }
     try {
       const bytes = await file.arrayBuffer();
       await store.add(bytes, file.name);
-      setStatus(`Загружено: ${file.name}`);
+      setStatus(`Loaded: ${file.name}`);
     } catch (err) {
-      setStatus(`Ошибка загрузки ${file.name}: ${err.message}`);
+      setStatus(`Failed to load ${file.name}: ${err.message}`);
     }
   }
 }
@@ -56,7 +56,7 @@ window.addEventListener('drop', (e) => {
   if (e.dataTransfer && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
 });
 
-// Рендер выбранного документа / итога
+// Render the selected document / result
 async function renderPreview() {
   canvasArea.innerHTML = '';
   const docs = store.orderedDocs;
@@ -66,35 +66,35 @@ async function renderPreview() {
   }
   dropHint.style.display = 'none';
 
-  // Если выбран один документ — показываем его страницы, иначе — слияние-превью
+  // One doc -> show its pages, otherwise show the merge preview
   const previewDocs = docs.length === 1 ? [docs[0]] : docs;
   for (const doc of previewDocs) {
-    const count = doc.pageCount; // всё превью — все страницы
-    setStatus(`Просмотр: ${doc.name}`);
+    const count = doc.pageCount; // full preview — all pages
+    setStatus(`View: ${doc.name}`);
     for (let p = 0; p < count; p++) {
       try {
         const { wrapper } = await renderPage(doc.bytes, p);
         canvasArea.appendChild(wrapper);
       } catch (err) {
-        setStatus(`Не удалось отрисовать ${doc.name} стр. ${p + 1}: ${err.message}`);
+        setStatus(`Could not render ${doc.name} page ${p + 1}: ${err.message}`);
       }
     }
   }
 }
 
-// Рендер результата слияния перед печатью/скачиванием
+// Render the merge result before printing/downloading
 let lastMergeBytes = null;
 async function buildPreview() {
   const docs = store.orderedDocs;
   if (docs.length === 0) return;
-  setStatus('Формирование превью...');
+  setStatus('Building preview...');
   try {
-    // Печатать/скачивать будем всё, что в диапазоне
+    // Print/download everything in range
     lastMergeBytes = await mergeDocs(docs);
     renderPreviewMerged(lastMergeBytes);
-    setStatus(`Готово: ${docs.length} док.`);
+    setStatus(`Done: ${docs.length} doc(s)`);
   } catch (err) {
-    setStatus(`Ошибка слияния: ${err.message}`);
+    setStatus(`Merge error: ${err.message}`);
   }
 }
 
@@ -104,11 +104,11 @@ async function renderPreviewMerged(bytes) {
   try {
     const pdfjsLib = window.pdfjsLib;
     if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function') {
-      throw new Error('PDF.js не загрузился (window.pdfjsLib отсутствует)');
+      throw new Error('PDF.js failed to load (window.pdfjsLib is missing)');
     }
     const data = new Uint8Array(bytes);
     const doc = await pdfjsLib.getDocument({ data }).promise;
-    const count = doc.numPages; // всё превью — все страницы
+    const count = doc.numPages; // full preview — all pages
     for (let p = 1; p <= count; p++) {
       const page = await doc.getPage(p);
       const viewport = page.getViewport({ scale: 1.1 });
@@ -123,11 +123,11 @@ async function renderPreviewMerged(bytes) {
       await page.render({ canvasContext: ctx, viewport }).promise;
     }
   } catch (err) {
-    setStatus(`Не удалось отрисовать слияние: ${err.message}`);
+    setStatus(`Could not render merge: ${err.message}`);
   }
 }
 
-// Список документов
+// Document list
 function renderList() {
   const docs = store.orderedDocs;
   docList.innerHTML = '';
@@ -137,13 +137,13 @@ function renderList() {
   docs.forEach((doc) => {
     const li = document.createElement('li');
     li.className = 'doc-item';
-    li.dataset.id = doc.id; // ОБЯЗАТЕЛЬНО: drop-обработчик читает li.dataset.id,
-    // без этого reorderByIds получает [undefined,...] → docs ⟶ [] → карточки исчезают
+    li.dataset.id = doc.id; // REQUIRED: the drop handler reads li.dataset.id,
+    // without it reorderByIds gets [undefined,...] -> docs ⟶ [] -> cards vanish
     const pctStart = Math.max(0, Math.min(100, ((doc.start - 1) / Math.max(1, doc.pageCount - 1)) * 100));
     const pctEnd = Math.max(pctStart, Math.min(100, ((doc.end - 1) / Math.max(1, doc.pageCount - 1)) * 100));
     li.innerHTML = `
       <div class="name-row">
-        <button class="btn-del" data-id="${doc.id}" title="Удалить">
+        <button class="btn-del" data-id="${doc.id}" title="Delete">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
         </button>
         <div class="name" draggable="true">${doc.name}</div>
@@ -161,12 +161,12 @@ function renderList() {
       </div>
     `;
     docList.appendChild(li);
-    // Перетаскиваем ТОЛЬКО за имя документа — не за всю карточку.
+    // Drag ONLY by the document name, not the whole card.
     const nameEl = li.querySelector('.name');
     nameEl._dragId = doc.id;
   });
 
-  // Свой обработчик drag для слайдера: thumb двигается мышью, без конфликта с DnD карточки.
+  // Own drag handler for the slider: thumb moves with the mouse, no conflict with card DnD.
   docList.querySelectorAll('.page-slider').forEach((slider) => bindSlider(slider));
 }
 
@@ -177,8 +177,8 @@ function renderList() {
 // multiplying instead of trimming. Coalesce them into one rebuild after settling.
 let previewTimer = null;
 let pendingPreview = false;
-// Пока перетаскиваем слайдер — emit() НЕ запускаем перерисовку списка и превью.
-// liveUpdate сам обновляет только этот слайдер, а на mouseup делаем один полный rebuild.
+// While dragging the slider — DON'T emit() to rebuild the list and preview.
+// liveUpdate itself updates only this slider, then on mouseup we do one full rebuild.
 let sliderDragging = false;
 function schedulePreview() {
   if (previewTimer) clearTimeout(previewTimer);
@@ -192,19 +192,19 @@ function schedulePreview() {
 }
 
 store.subscribe(() => {
-  // Во время drag слайдера НЕ перерисовываем список и превью — liveUpdate сам
-  // точечно обновляет только этот слайдер, чтобы thumb не «прыгал» от rebuild.
+  // During slider drag DON'T rebuild the list and preview — liveUpdate itself
+  // precisely updates only this slider so the thumb doesn't "jump" from rebuild.
   if (sliderDragging) return;
   renderList();
   if (store.orderedDocs.length > 0) schedulePreview();
 });
 
-// Drag & drop для изменения порядка карточек (порядок = порядок слияния).
-// Перемещаем DOM-элементы напрямую во время dragover — плавно «приливают».
-// В store фиксируем итоговый порядок только на drop.
+// Drag & drop for changing card order (order = merge order).
+// Move DOM elements directly during dragover — they "glue" smoothly.
+// In store we only fix the final order on drop.
 let dragId = null;
 docList.addEventListener('dragstart', (e) => {
-  // Перетаскиваем ТОЛЬКО за имя документа, не за всю карточку и не за слайдер.
+  // Drag ONLY by the document name, not the whole card or the slider.
   const nameEl = e.target.closest('.name');
   if (!nameEl || !nameEl._dragId) return;
   dragId = nameEl._dragId;
@@ -212,8 +212,8 @@ docList.addEventListener('dragstart', (e) => {
   li.classList.add('dragging');
   e.dataTransfer.effectAllowed = 'move';
 
-  // Кастомный предпросмотр перетаскивания — показывает ВЦЕЛОК карточку, а не только
-  // текст имени: клонируем .doc-item, прячем за экран и передаём как drag-image.
+  // Custom drag preview — shows the WHOLE card, not just the name text:
+  // clone .doc-item, hide it off-screen and pass it as the drag-image.
   const ghost = li.cloneNode(true);
   Object.assign(ghost.style, {
     position: 'absolute', top: '-9999px', left: '-9999px',
@@ -222,7 +222,7 @@ docList.addEventListener('dragstart', (e) => {
   });
   document.body.appendChild(ghost);
   e.dataTransfer.setDragImage(ghost, 40, 20);
-  // Убираем клон после того, как браузер скопировал его в drag-картинку.
+  // Remove the clone after the browser has copied it into the drag image.
   requestAnimationFrame(() => ghost.remove());
 });
 docList.addEventListener('dragend', (e) => {
@@ -232,7 +232,7 @@ docList.addEventListener('dragend', (e) => {
 });
 docList.addEventListener('dragover', (e) => {
   if (!dragId) return;
-  e.preventDefault(); // разрешаем drop
+  e.preventDefault(); // allow drop
   const target = e.target.closest('.doc-item');
   if (!target || target.dataset.id === dragId) return;
 
@@ -241,10 +241,10 @@ docList.addEventListener('dragover', (e) => {
   const draggedEl = docList.querySelector(`.doc-item[data-id="${dragId}"]`);
   if (!draggedEl) return;
 
-  // Вставляем перетаскиваемый элемент относительно ЦЕЛЕВОГО элемента:
-  // перед ним (верхняя половина) или за ним (нижняя половина).
-  // insertAdjacentElement всегда ставит dragged относительно fixed target,
-  // независимо от того, где dragged сейчас находится.
+  // Insert the dragged element relative to the TARGET element:
+  // before it (top half) or after it (bottom half).
+  // insertAdjacentElement always places dragged relative to a fixed target,
+  // regardless of where dragged currently is.
   if (afterTarget) {
     target.insertAdjacentElement('afterend', draggedEl);
   } else {
@@ -252,16 +252,16 @@ docList.addEventListener('dragover', (e) => {
   }
 });
 docList.addEventListener('drop', () => {
-  // Фиксируем новый порядок карточек из DOM в store.
+  // Fix the new card order from the DOM into store.
   const ids = [...docList.querySelectorAll('.doc-item')].map((li) => li.dataset.id);
   if (ids.length) store.reorderByIds(ids);
   dragId = null;
 });
 
-// Мобильный drag для изменения порядка карточек: mouse/drag-and-drop работает
-// только на ПК, поэтому здесь — отдельная система на touch-событиях. Держим палец
-// на имени >300ms (long-press) → начинаем перетаскивать → двигаем пальцем, плавно
-// «приливая» к соседним карточкам → отпускаем → фиксируем порядок в store.
+// Mobile drag for changing card order: mouse/drag-and-drop only works on desktop,
+// so here's a separate system on touch events. Hold your finger on the name
+// >300ms (long-press) → start dragging → move your finger, smoothly "gluing"
+// to adjacent cards → release → fix the order in store.
 let touchDragId = null;
 let touchDragEl = null;
 let touchMoved = false;
@@ -282,7 +282,7 @@ docList.addEventListener('touchstart', (e) => {
     touchDragEl = docList.querySelector(`.doc-item[data-id="${touchDragId}"]`);
     if (!touchDragEl) return;
     touchDragEl.classList.add('dragging');
-    // Блокируем прокрутку/выделение пока тащим карточку.
+    // Block scrolling/selecting while dragging the card.
     document.body.style.userSelect = 'none';
     document.body.style.overflow = 'hidden';
   }, LONG_PRESS_MS);
@@ -292,7 +292,7 @@ docList.addEventListener('touchmove', (e) => {
   if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
   if (!touchDragEl) return;
   touchMoved = true;
-  e.preventDefault(); // не даём скроллить страницу пальцем
+  e.preventDefault(); // don't let the page scroll by finger
 
   const y = e.touches[0].clientY;
   const target = cardForTouch(e);
@@ -313,7 +313,7 @@ docList.addEventListener('touchend', () => {
     touchDragEl.classList.remove('dragging');
     document.body.style.userSelect = '';
     document.body.style.overflow = '';
-    // Фиксируем порядок только если реально перетаскивали — иначе не ломаем tap.
+    // Fix the order only if we actually dragged — otherwise don't break tap.
     if (touchMoved) {
       const ids = [...docList.querySelectorAll('.doc-item')].map((li) => li.dataset.id);
       if (ids.length) store.reorderByIds(ids);
@@ -324,20 +324,20 @@ docList.addEventListener('touchend', () => {
   touchMoved = false;
 });
 
-// Свой обработчик drag для слайдера — thumb двигается мышью, без конфликта с DnD карточки.
-// Позиции дискретные: thumb привязан к целым номерам страниц (1..pageCount), а не к пикселям.
+// Own drag handler for the slider — thumb moves with the mouse, no conflict with card DnD.
+// Positions are discrete: thumb snaps to whole page numbers (1..pageCount), not pixels.
 function bindSlider(slider) {
   const doc = store.docs.find((d) => d.id === slider.dataset.id);
   if (!doc) return;
   const track = slider.querySelector('.ps-track');
   let field = null;
-  // Поле thumb, который взяли последним. При слиянии двух thumbs показываем/оставляем
-  // активным ТОЛЬКО его — иначе на мобильных второй уже не достать пальцем.
+  // The thumb field grabbed last. When two thumbs merge, show/keep only
+  // it active — otherwise the second can't be reached by finger on mobile.
   let lastField = null;
 
-  // Обновить ТОЛЬКО этот слайдер: заливку, позиции thumb и числовые подписи.
-  // НЕ перерисовываем весь список (renderList) — иначе каждый mousemove во время
-  // drag вызывает full rebuild карточек, из-за чего ползунок «прыгает» к краю.
+  // Update ONLY this slider: fill, thumb positions and numeric labels.
+  // DON'T rebuild the whole list (renderList) — otherwise every mousemove during
+  // drag triggers a full card rebuild, which makes the slider "jump" to an edge.
   const liveUpdate = (start, end) => {
     const pctStart = ((start - 1) / Math.max(1, doc.pageCount - 1)) * 100;
     const pctEnd = ((end - 1) / Math.max(1, doc.pageCount - 1)) * 100;
@@ -351,21 +351,29 @@ function bindSlider(slider) {
     if (startThumb) startThumb.style.left = pctStart + '%';
     if (endThumb) endThumb.style.left = pctEnd + '%';
 
-    // Два thumb «прилипают» друг к другу, когда их страницы совпадают. Тогда они
-    // визуально перекрываются и нижний уже не попасть пальцем/курсором. Раньше мы их
-    // сдвигали по вертикали — это неудобно на мобильных. Теперь при слиянии показываем
-    // и оставляем активным ТОЛЬКО тот thumb, который взяли последним (lastField): он
-    // под пальцем, а второй прячем (opacity: 0), чтобы его случайно не тащить. Как
-    // страницы снова расходятся — оба возвращаются в дефолтное положение.
+    // The two thumbs "glue" together when their pages match. Then they overlap
+    // visually and the bottom one can't be reached by finger/mouse. We used to
+    // shift them vertically — that's awkward on mobile. Now, when merging, we show
+    // and keep active ONLY the thumb grabbed last (lastField): it's under the finger,
+    // while the other is hidden (opacity: 0) so it can't be dragged by mistake. When
+    // pages separate again — both return to their default position.
     if (startThumb && endThumb) {
       const overlap = Math.abs(pctStart - pctEnd) < 0.5;
       if (overlap) {
+        // When the thumbs sit on the same page they paint at the exact same left
+        // position, so DOM order decides stacking and .ps-end always lands on top of
+        // .ps-start — which means dragging start forward onto end makes start
+        // unreachable. Bring the last-grabbed thumb to the front via z-index so it's
+        // the one that receives clicks/touches; hide the other with opacity +
+        // pointer-events:none (handled by the CSS rule below). Splitting again returns
+        // both thumbs to their default stacking.
         const active = lastField === 'end' ? endThumb : startThumb;
         const other = active === startThumb ? endThumb : startThumb;
         active.style.opacity = '1';
         active.style.top = '-3px';
-        // Второй thumb остаётся на месте (left не трогаем), но прячем — он неактивен.
+        active.style.zIndex = '2';
         other.style.opacity = '0';
+        other.style.zIndex = '1';
       } else {
         startThumb.style.opacity = '1';
         endThumb.style.opacity = '1';
@@ -374,7 +382,7 @@ function bindSlider(slider) {
       }
     }
 
-    // Числовые подписи: № первой страницы до слайдера, № последней — после.
+    // Numeric labels: the first page number before the slider, the last after.
     const range = slider.closest('.page-range');
     if (range) {
       const startLabel = range.querySelector('[data-role="start"]');
@@ -384,7 +392,7 @@ function bindSlider(slider) {
     }
   };
 
-  // процент → целая страница (1..pageCount). Math.round даёт дискретные шаги.
+  // percent → whole page (1..pageCount). Math.round gives discrete steps.
   const pageFromPct = (pct) => {
     return Math.max(1, Math.min(doc.pageCount, Math.round((pct / 100) * (doc.pageCount - 1)) + 1));
   };
@@ -395,13 +403,13 @@ function bindSlider(slider) {
     return Math.max(0, Math.min(100, ((x - rect.left) / rect.width) * 100));
   };
 
-  // Точность квантования: слайдер длиной L px даёт шаг ~L/pageCount.
-  // Ограничим минимальный шаг (0.5 страницы), чтобы «мерцание» у краёв не дрожало thumb.
+  // Quantization accuracy: a slider of length L px gives a step ~L/pageCount.
+  // Limit the minimum step (0.5 pages) so "flicker" at the edges doesn't shake the thumb.
   const minStep = Math.max(1, doc.pageCount / track.getBoundingClientRect().width);
 
   const commit = (pct) => {
     let page = pageFromPct(pct);
-    // Квантуем к шагу — убираем дробные «прыжки» между целыми страницами.
+    // Quantize to step — remove fractional "jumps" between whole pages.
     if (field === 'start') {
       const quantized = Math.max(1, Math.min(doc.end, Math.round(page / minStep) * minStep));
       store.setRange(doc.id, quantized, doc.end);
@@ -409,7 +417,7 @@ function bindSlider(slider) {
       const quantized = Math.min(doc.pageCount, Math.max(doc.start, Math.round(page / minStep) * minStep));
       store.setRange(doc.id, doc.start, quantized);
     }
-    // Живое обновление этого слайдера — без перерисовки всего списка.
+    // Live update of this slider — without rebuilding the whole list.
     const d = store.docs.find((x) => x.id === slider.dataset.id);
     if (d) liveUpdate(d.start, d.end);
   };
@@ -418,17 +426,17 @@ function bindSlider(slider) {
     const thumb = e.target.closest('.ps-thumb');
     if (!thumb || !thumb.dataset.field) return;
     field = thumb.dataset.field;
-    // Запоминаем, какой именно thumb только что взяли — чтобы при слиянии показывать/
-    // оставлять активным ТОЛЬКО его (второй на мобильных уже не достать пальцем).
+    // Remember exactly which thumb we just grabbed — so when merging it's the one
+    // shown/kept active (the second can't be reached by finger on mobile).
     lastField = field;
     sliderDragging = true;
 
-    // Собственный drag — не даём событиям уйти на карточку/DnD. Поддерживаем и мышь,
-    // и тач: на мобильных mousemove не срабатывает, поэтому там ловим touchmove.
+    // Own drag — don't let events leak to card/DnD. Support both mouse and touch:
+    // on mobile mousemove doesn't fire, so there we catch touchmove.
     if (e.cancelable) e.preventDefault();
     document.body.style.userSelect = 'none';
 
-    // X-координата для любого типа события (мышь или пальцем).
+    // X-coordinate for any event type (mouse or finger).
     const getX = (ev) => {
       if (ev.touches && ev.touches.length > 0) return ev.touches[0].clientX;
       return ev.clientX;
@@ -436,7 +444,7 @@ function bindSlider(slider) {
 
     const move = (ev) => {
       commit(pctFromClientX(getX(ev)));
-      // Блокируем скролл страницы пальцем пока тянем слайдер.
+      // Block page scrolling by finger while dragging the slider.
       if (ev.cancelable && ev.touches && ev.touches.length > 0) ev.preventDefault();
     };
     const up = () => {
@@ -447,7 +455,7 @@ function bindSlider(slider) {
       document.body.style.userSelect = '';
       field = null;
       sliderDragging = false;
-      // Один чистый rebuild после окончания drag — синхронизируем список и превью.
+      // One clean rebuild after drag ends — sync the list and preview.
       renderList();
       if (store.orderedDocs.length > 0) schedulePreview();
     };
@@ -463,8 +471,8 @@ function bindSlider(slider) {
   };
 
   slider.addEventListener('mousedown', onDown);
-  // На мобильных mousemove не срабатывает — ловим touchstart. НЕ passive, чтобы
-  // можно было preventDefault и заблокировать скролл страницы при начале drag'а.
+  // On mobile mousemove doesn't fire — catch touchstart. NOT passive, so we can
+  // preventDefault and block page scrolling when a drag starts.
   slider.addEventListener('touchstart', onDown);
 }
 
@@ -472,7 +480,7 @@ docList.addEventListener('click', (e) => {
   const delBtn = e.target.closest('.btn-del');
   if (delBtn) {
     store.remove(delBtn.dataset.id);
-    setStatus('Документ удалён');
+    setStatus('Document deleted');
   }
 });
 
@@ -481,9 +489,9 @@ mergeBtn.addEventListener('click', async () => {
     const bytes = await mergeDocs(store.orderedDocs);
     const name = `merged_${Date.now()}.pdf`;
     await savePdf(bytes, name);
-    setStatus(`Слито и скачано: ${name}`);
+    setStatus(`Merged and downloaded: ${name}`);
   } catch (err) {
-    setStatus(`Ошибка слияния: ${err.message}`);
+    setStatus(`Merge error: ${err.message}`);
   }
 });
 
@@ -492,7 +500,7 @@ printBtn.addEventListener('click', async () => {
     const bytes = await mergeDocs(store.orderedDocs);
     const blob = new Blob([bytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
-    // Печать PDF через iframe — векторное качество, файл не покидает браузер
+    // Print PDF via iframe — vector quality, file never leaves the browser
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.right = '0';
@@ -505,14 +513,14 @@ printBtn.addEventListener('click', async () => {
     iframe.addEventListener('load', () => {
       setTimeout(() => {
         try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); }
-        catch (e) { setStatus(`Ошибка печати: ${e.message}`); }
+        catch (e) { setStatus(`Print error: ${e.message}`); }
         finally { iframe.remove(); URL.revokeObjectURL(url); }
       }, 500);
     });
   } catch (err) {
-    setStatus(`Ошибка печати: ${err.message}`);
+    setStatus(`Print error: ${err.message}`);
   }
 });
 
-// Инициализация — пустой список
+// Initialization — empty list
 renderList();
