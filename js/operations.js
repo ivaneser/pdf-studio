@@ -1,17 +1,17 @@
-// Манипуляции с PDF на стороне клиента через pdf-lib.
-// Все операции выполняются в памяти браузера, без отправки файлов где-либо.
+// PDF manipulation on the client via pdf-lib.
+// All operations run in browser memory — files are never sent anywhere.
 //
-// ВАЖНО API этой версии:
+// IMPORTANT for this version of the API:
 //   - await PDFDocument.load(...)
-//   - const out = await PDFDocument.create()          <- create асинхронный!
-//   - pages = await src.copyPages(src, indices)       <- копируем страницы
+//   - const out = await PDFDocument.create()          <- create is async!
+//   - pages = await src.copyPages(src, indices)       <- copy pages in
 //   - for (const p of pages) out.addPage(p)
 
 import * as pdfLib from 'pdf-lib';
 
 export async function mergeDocs(docs) {
   const out = await pdfLib.PDFDocument.create();
-  // Копируем страницы прямо в целевой документ, чтобы не было "foreign page" error
+  // Copy pages directly into the target doc to avoid "foreign page" error
   for (const doc of docs) {
     const src = await pdfLib.PDFDocument.load(doc.bytes, { ignoreEncryption: true });
     const indices = [];

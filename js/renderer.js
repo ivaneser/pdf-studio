@@ -1,9 +1,9 @@
-// Рендер PDF в canvas через PDF.js. Все страницы — локально, во фрейме браузера.
+// Render PDF pages to canvas via PDF.js. All rendering is local, in the browser.
 //
-// pdf.min.js — UMD-сборка: грузится как обычный <script> и ставит глобал
-// window.pdfjsLib (импорт ES не даёт экспортов из этого файла).
+// pdf.min.js — UMD build: loaded as a normal <script> and sets the global
+// window.pdfjsLib (ES import doesn't export anything from that file).
 
-// Указываем воркеру его собственный путь (локальный файл).
+// Point the worker at its own path (local file).
 if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
   window.pdfjsLib.GlobalWorkerOptions.workerSrc = './lib/pdf.worker.min.js';
 }
@@ -11,7 +11,7 @@ if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
 export async function renderPage(arrayBuffer, pageIndex) {
   const pdfjsLib = window.pdfjsLib;
   if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function') {
-    throw new Error('PDF.js не загрузился (window.pdfjsLib отсутствует)');
+    throw new Error('PDF.js failed to load (window.pdfjsLib is missing)');
   }
   const data = new Uint8Array(arrayBuffer);
   const pdf = await pdfjsLib.getDocument({ data }).promise;

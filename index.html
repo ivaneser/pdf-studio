@@ -1,13 +1,13 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDF Studio — всё в браузере</title>
+  <title>PDF Studio — everything in the browser</title>
   <!--
-    importmap связывает имена модулей с локальными файлами.
-    Библиотеки грузятся из lib/, а НЕ из CDN -> PDF-файлы вообще не идут во внешние сети,
-    загрузка кода возможна по whitelist'у (или вообще offline).
+    importmap maps module names to local files.
+    Libraries load from lib/, NOT from CDN -> PDF files never go to external networks,
+    code loading is possible via whitelist (or fully offline).
   -->
   <script type="importmap">
   {
@@ -16,50 +16,50 @@
     }
   }
   </script>
-  <!-- PDF.js — UMD-сборка, ставит глобал window.pdfjsLib; грузим как обычный <script> -->
+  <!-- PDF.js — UMD build, sets global window.pdfjsLib; load as a regular <script> -->
   <script src="./lib/pdf.min.js"></script>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <header class="topbar">
     <h1>PDF&nbsp;Studio</h1>
-    <p class="tagline">Просмотр, объединение, вырезание страниц и печать — всё выполняется в вашем браузере.</p>
+    <p class="tagline">View, merge, cut pages and print — everything runs in your browser.</p>
   </header>
 
   <main class="layout">
-    <!-- Левая панель: список документов -->
+    <!-- Left panel: document list -->
     <aside class="sidebar">
       <div class="card">
-        <h2>Документы</h2>
-        <p class="hint">Перетаскивайте карточки, чтобы менять порядок слияния.</p>
-        <button id="addBtn" class="btn btn-primary">+ Добавить PDF</button>
+        <h2>Documents</h2>
+        <p class="hint">Drag cards to change the merge order.</p>
+        <button id="addBtn" class="btn btn-primary">+ Add PDF</button>
         <input type="file" id="fileInput" accept="application/pdf" multiple hidden />
         <ul id="docList" class="doc-list"></ul>
       </div>
 
       <div class="card">
-        <h2>Действия</h2>
-        <button id="mergeBtn" class="btn" disabled>Объдинить и скачать</button>
-        <button id="printBtn" class="btn" disabled>Печать итога</button>
+        <h2>Actions</h2>
+        <button id="mergeBtn" class="btn" disabled>Merge &amp; Download</button>
+        <button id="printBtn" class="btn" disabled>Print Result</button>
       </div>
 
       <details class="card">
-        <summary>Как это работает</summary>
-        <p>Весь код (pdf-lib + PDF.js) выполняется в вашем браузере. Ваши файлы никуда не отправляются — обработка происходит локально.</p>
+        <summary>How it works</summary>
+        <p>All code (pdf-lib + PDF.js) runs in your browser. Your files are never sent anywhere — processing happens locally.</p>
       </details>
     </aside>
 
-    <!-- Правая панель: рабочая область -->
+    <!-- Right panel: workspace -->
     <section class="workspace">
       <div id="dropHint" class="drop-hint">
-        Перетащите сюда PDF или нажмите «Добавить PDF» слева.
+        Drag &amp; drop a PDF here or click "Add PDF" on the left.
       </div>
       <div id="canvasArea" class="canvas-area"></div>
     </section>
   </main>
 
   <footer class="statusbar">
-    <span id="statusText">Готово.</span>
+    <span id="statusText">Done.</span>
   </footer>
 
   <script type="module" src="./js/app.js"></script>
