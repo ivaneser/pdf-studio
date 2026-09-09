@@ -127,6 +127,25 @@ async function renderPreviewMerged(bytes) {
   }
 }
 
+// Build a single slider thumb element for a doc. When the doc's start===end both
+// thumbs sit at the same left position (they "glue" together), so DOM order would
+// make .ps-end always paint on top of .ps-start and dragging `start` onto `end`
+// would leave `start` unreachable. We bring the last-grabbed thumb to the front via
+// z-index and hide the other with opacity:0 + pointer-events:none (the CSS rule
+// handles the latter). This mirrors the liveUpdate() overlap logic so stacking is
+// correct even after renderList(), which rebuilds every slider and strips inline
+// styles.
+function thumbStyle(field, doc, pct) {
+  const cls = field === 'start' ? 'ps-thumb ps-start' : 'ps-thumb ps-end';
+  const style = `left:${pct}%`;
+  if (doc.start !== doc.end) return `<div class="${cls}" data-field="${field}" style="${style}"></div>`;
+  // Overlap: stack the last-grabbed thumb on top, hide the other.
+  if (lastGrabbed === field) {
+    return `<div class="${cls}" data-field="${field}" style="${style};z-index:2;opacity:1;top:-3px"></div>`;
+  }
+  return `<div class="${cls}" data-field="${field}" style="${style};z-index:1;opacity:0"></div>`;
+}
+
 // Document list
 function renderList() {
   const docs = store.orderedDocs;
@@ -153,8 +172,8 @@ function renderList() {
         <div class="page-slider" data-id="${doc.id}">
           <div class="ps-track">
             <div class="ps-fill" style="left:${pctStart}%;width:${pctEnd - pctStart}%"></div>
-            <div class="ps-thumb ps-start" data-field="start" style="left:${pctStart}%"></div>
-            <div class="ps-thumb ps-end" data-field="end" style="left:${pctEnd}%"></div>
+            ${thumbStyle('start', doc, pctStart)}
+            ${thumbStyle('end', doc, pctEnd)}
           </div>
         </div>
         <span class="pr-label pr-end" data-role="end">${doc.end}</span>
@@ -180,6 +199,10 @@ let pendingPreview = false;
 // While dragging the slider — DON'T emit() to rebuild the list and preview.
 // liveUpdate itself updates only this slider, then on mouseup we do one full rebuild.
 let sliderDragging = false;
+// Which thumb was grabbed last (module scope so it survives renderList(), which
+// rebuilds the whole list and strips inline styles). When a doc's start===end
+// both thumbs sit at the same left position, so we bring this one to the front.
+let lastGrabbed = null;
 function schedulePreview() {
   if (previewTimer) clearTimeout(previewTimer);
   const run = () => {
@@ -331,9 +354,6 @@ function bindSlider(slider) {
   if (!doc) return;
   const track = slider.querySelector('.ps-track');
   let field = null;
-  // The thumb field grabbed last. When two thumbs merge, show/keep only
-  // it active — otherwise the second can't be reached by finger on mobile.
-  let lastField = null;
 
   // Update ONLY this slider: fill, thumb positions and numeric labels.
   // DON'T rebuild the whole list (renderList) — otherwise every mousemove during
@@ -354,9 +374,9 @@ function bindSlider(slider) {
     // The two thumbs "glue" together when their pages match. Then they overlap
     // visually and the bottom one can't be reached by finger/mouse. We used to
     // shift them vertically — that's awkward on mobile. Now, when merging, we show
-    // and keep active ONLY the thumb grabbed last (lastField): it's under the finger,
-    // while the other is hidden (opacity: 0) so it can't be dragged by mistake. When
-    // pages separate again — both return to their default position.
+    // and keep active ONLY the thumb grabbed last (lastGrabbed): it's under the
+    // finger, while the other is hidden (opacity: 0) so it can't be dragged by
+    // mistake. When pages separate again — both return to their default position.
     if (startThumb && endThumb) {
       const overlap = Math.abs(pctStart - pctEnd) < 0.5;
       if (overlap) {
@@ -367,7 +387,7 @@ function bindSlider(slider) {
         // the one that receives clicks/touches; hide the other with opacity +
         // pointer-events:none (handled by the CSS rule below). Splitting again returns
         // both thumbs to their default stacking.
-        const active = lastField === 'end' ? endThumb : startThumb;
+        const active = lastGrabbed === 'end' ? endThumb : startThumb;
         const other = active === startThumb ? endThumb : startThumb;
         active.style.opacity = '1';
         active.style.top = '-3px';
@@ -427,8 +447,10 @@ function bindSlider(slider) {
     if (!thumb || !thumb.dataset.field) return;
     field = thumb.dataset.field;
     // Remember exactly which thumb we just grabbed — so when merging it's the one
-    // shown/kept active (the second can't be reached by finger on mobile).
-    lastField = field;
+    // shown/kept active. Tracked at module scope (not here) because renderList(),
+    // called on release, rebuilds every slider and strips inline styles; this value
+    // must survive that so both thumbs stack correctly after every drag.
+    lastGrabbed = field;
     sliderDragging = true;
 
     // Own drag — don't let events leak to card/DnD. Support both mouse and touch:

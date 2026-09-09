@@ -47,7 +47,11 @@ export class Store {
   setRange(id, start, end) {
     const doc = this.docs.find((d) => d.id === id);
     if (!doc) return;
-    // Limit within available pages and don't overflow the range.
+    // Pages are always whole numbers. Quantize here so the labels and thumbs never
+    // show floats — commit() can pass a fractional value when the track is narrow
+    // (minStep is only clamped to >= 1, not rounded), e.g. round(2 / 1.5) * 1.5 = 1.5.
+    start = Math.max(1, Math.min(doc.pageCount, Math.round(start)));
+    end = Math.max(1, Math.min(doc.pageCount, Math.round(end)));
     doc.start = Math.max(1, Math.min(doc.pageCount, start));
     doc.end = Math.max(doc.start, Math.min(doc.pageCount, end));
     this.emit();
