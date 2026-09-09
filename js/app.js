@@ -745,7 +745,7 @@ async function openSharePointBookmarklet() {
 
   area.innerHTML = `
     <p class="hint">Tick PDFs on a SharePoint list, then click this link. pdf-studio opens and receives the files.</p>
-    <a id="spBmLink" href="${esc(url)}" class="sp-bm-drag" download="pdf-studio-sharepoint-bookmarklet">📥 Drag me to your bookmarks bar</a>
+    <a id="spBmLink" href="${esc(url)}" class="sp-bm-drag" title="PDF Studio" download="PDF Studio.bookmark">📥 Drag me to your bookmarks bar</a>
     <button id="spBmCopy" class="btn btn-primary">Copy URL</button>
     <div id="spBmStatus" class="hint"></div>`;
 
