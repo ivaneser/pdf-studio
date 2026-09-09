@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF Studio — SharePoint Bookmarklet</title>
+  <style>
+    :root { --blue:#2b6cb0; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, "Segoe UI", Roboto, sans-serif; margin:0; padding:32px 16px; background:#f7fafc; color:#1a202c; line-height:1.5; }
+    .wrap { max-width:720px; margin:0 auto; }
+    h1 { font-size:24px; margin:0 0 4px; }
+    p.sub { color:#4a5568; margin-top:0; }
+    .card { background:#fff; border-radius:12px; padding:20px 24px; box-shadow:0 1px 3px rgba(0,0,0,.12); margin-bottom:20px; }
+    .dropzone { display:flex; align-items:center; gap:14px; background:#ebf4ff; border:2px dashed var(--blue); border-radius:10px; padding:16px 18px; margin-bottom:18px; }
+    .dlbtn { display:inline-block; background:var(--blue); color:#fff; text-decoration:none; font-weight:600; padding:11px 20px; border-radius:8px; white-space:nowrap; user-select:none; }
+    .dlbtn:hover { background:#24568c; }
+    .hint { color:#4a5568; font-size:14px; }
+    ol,ol li,ul li { margin:.35rem 0; }
+    code { background:#edf2f7; padding:1px 5px; border-radius:4px; font-size:90%; }
+    .note { background:#fffbeb; border:1px solid #f6e05e; border-radius:8px; padding:12px 14px; color:#744210; font-size:14px; }
+    label { display:block; font-weight:600; margin:14px 0 6px; font-size:14px; }
+    input[type=text],select { width:100%; padding:9px 10px; border:1px solid #cbd5e0; border-radius:6px; font-size:14px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .row > div { flex:1; min-width:220px; }
+    .genbtn { margin-top:16px; background:#38a169; color:#fff; border:none; padding:10px 18px; border-radius:8px; font-weight:600; cursor:pointer; }
+    .genbtn:hover { background:#2f855a; }
+    #status { margin-top:10px; font-size:14px; color:#2f855a; min-height:18px; }
+    a.bookmark-live { display:inline-block; margin-top:6px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>PDF Studio — SharePoint Bookmarklet</h1>
+  <p class="sub">Select PDFs in a modern SharePoint list, then click this bookmark to open them directly in <a href="https://ivaneser.github.io/pdf-studio/" target="_blank" rel="noopener">PDF&nbsp;Studio</a>.</p>
+
+  <div class="card">
+    <div class="dropzone">
+      <a id="dlBtn" class="dlbtn" download="#">📥 Drag me to your bookmarks bar</a>
+      <span class="hint">(or right-click it → “Add bookmark”)</span>
+    </div>
+    <p class="hint">Once added, open any SharePoint list, tick the checkboxes next to your PDFs, then click this bookmark. It opens PDF Studio and sends the files automatically.</p>
+  </div>
+
+  <div class="card">
+    <label for="studioUrl">PDF Studio URL</label>
+    <input type="text" id="studioUrl" value="https://ivaneser.github.io/pdf-studio/">
+
+    <div class="row">
+      <div>
+        <label for="openMode">When you click the bookmark</label>
+        <select id="openMode">
+          <option value="newtab">Open a new tab each time (recommended)</option>
+          <option value="focalive">Focus existing PDF Studio tab if open</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="genbtn" id="regen">Regenerate bookmarklet</button>
+    <div id="status"></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0;">How it works</h3>
+    <ol>
+      <li>Tick checkboxes for the PDFs you want in a modern SharePoint list.</li>
+      <li>Click the bookmarklet. It downloads your selected files from SharePoint (your login is already valid there).</li>
+      <li>It opens PDF Studio and sends each file to it — no manual upload.</li>
+    </ol>
+    <div class="note">
+      <strong>Note:</strong> This runs as JavaScript on the SharePoint page, so it uses your existing login session to download files. It never stores or uploads them anywhere except PDF&nbsp;Studio. For a Document Library with many thousands of files, tick only what you need in one view (SP loads rows lazily).
+    </div>
+  </div>
+</div>
+
+<script>
+// The bookmarklet source. Runs on the SharePoint page: reads selection, fetches bytes, opens PDF Studio.
+var BOOKMARKLET_SRC = `
+(function () {
+  var STUDIO_URL = '<<STUDIO_URL>>';
+  function setStatus(m){ console.log('[PDF Studio]', m); }
+  async function fetchBytes(url, sig){ var r=await fetch(url,{credentials:'include',signal:sig}); if(!r.ok) throw new Error('HTTP '+r.status); return await r.arrayBuffer(); }
+
+  // Read selection from the modern grid DOM (fallbacks for SPFx grids).
+  function getSelectedFromDom(){
+    var rows=[];
+    var cands=document.querySelectorAll('tr[role="row"], [data-automation-id^="gridRow"]');
+    for (var i=0;i<cands.length;i++){
+      var row=cands[i];
+      var cb=row.querySelector('[role="checkbox"][aria-checked="true"], input[type="checkbox"]:checked');
+      if (cb) rows.push(row);
+    }
+    return rows;
+  }
+  function urlForRow(row){
+    var a=null, links=row.querySelectorAll('a[href]');
+    for (var i=0;i<links.length;i++){ var h=links[i].href||''; if(/\\.pdf(\\?|$)/i.test(h)||~h.indexOf('/Shared Documents/')||~h.indexOf('/Document/')){a=links[i];break;} }
+    if (!a) for (var j=0;j<links.length;j++){ var h2=links[j].href||''; if(/\\.pdf(\\?|$)/i.test(h2)){a=links[j];break;} }
+    if (!a) return null;
+    var name=(a.textContent||'').trim();
+    if (!name){ try { var q=a.href.split('?')[0]; name=decodeURIComponent(q.substring(q.lastIndexOf('/')+1))||'file.pdf'; } catch(e){ name='file.pdf'; } }
+    return {url:a.href, name:name};
+  }
+
+  async function run(){
+    setStatus('Reading selection...');
+    var rows=getSelectedFromDom();
+    if (!rows.length){ alert('No files selected. Tick checkboxes for the PDFs you want, then click again.'); return; }
+    setStatus('Downloading '+rows.length+' file(s)...');
+    var ctrl=new AbortController(); setTimeout(function(){ctrl.abort();},120000);
+    var items=[];
+    for (var i=0;i<rows.length;i++){ try { var info=urlForRow(rows[i]); if(!info) continue; setStatus('Downloading: '+info.name); items.push({name:info.name, bytes:await fetchBytes(info.url,ctrl.signal)}); } catch(e){ setStatus('Failed to download one file: '+e.message); } }
+    if (!items.length){ alert('Could not download any of the selected files.'); return; }
+
+    var studio=window.open(STUDIO_URL,'_blank','noopener');
+    if (!studio){ alert('Popup blocked. Allow popups for this site and try again.'); return; }
+    var tries=0, timer=setInterval(function(){
+      if (studio.closed){ clearInterval(timer); return; }
+      try { if (studio.postMessage && studio.postReady){ clearInterval(timer); studio.postMessage({type:'PS_IMPORT_FILES', files:items}, '*'); setStatus('Sent '+items.length+' file(s) to PDF Studio.'); return; } } catch(e){}
+      if (++tries>300){ clearInterval(timer); try{studio.postMessage({type:'PS_IMPORT_FILES',files:items},'*');}catch(e){} }
+    },100);
+  }
+  run();
+})();
+`;
+
+function buildBookmarklet(url, openMode) {
+  var src = BOOKMARKLET_SRC.replace('<<STUDIO_URL>>', url).replace('<<OPEN_MODE>>', openMode);
+  // Encode as base64 for a clean bookmark URL (avoids escaping issues across browsers).
+  return 'javascript:' + btoa(src);
+}
+
+function render() {
+  var url = document.getElementById('studioUrl').value.trim() || 'https://ivaneser.github.io/pdf-studio/';
+  var mode = document.getElementById('openMode').value;
+  var href = buildBookmarklet(url, mode);
+  var btn = document.getElementById('dlBtn');
+  btn.setAttribute('href', href);
+  // Also expose for copy.
+  window.__bookmarkHref = href;
+  document.getElementById('status').textContent = 'Ready — drag the button above to your bookmarks bar.';
+}
+
+document.getElementById('studioUrl').addEventListener('input', render);
+document.getElementById('openMode').addEventListener('change', render);
+document.getElementById('regen').addEventListener('click', function(){
+  var url = document.getElementById('studioUrl').value.trim();
+  if (!/^https?:\/\//.test(url)) { document.getElementById('status').textContent = 'URL must start with http(s)://'; return; }
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
