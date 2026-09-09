@@ -264,6 +264,10 @@ function bindRangeInputs() {
         }
       } finally {
         rangeEditing = false;
+        // setRange() emitted while rangeEditing was true, so the subscribe handler
+        // skipped the rebuild/preview. Force one preview refresh now so narrowed
+        // ranges actually update the result (and corrected values re-render).
+        if (store.orderedDocs.length > 0) schedulePreview();
       }
       const d = store.docs.find((x) => x.id === input.dataset.id);
       if (d) refreshDocSlider(d);
@@ -611,6 +615,7 @@ docList.addEventListener('click', (e) => {
 
 mergeBtn.addEventListener('click', async () => {
   try {
+    console.log("SAVE", store.docs.map(d => ({name:d.name, start:d.start, end:d.end, pageCount:d.pageCount})));
     const bytes = await mergeDocs(store.orderedDocs);
     const name = `merged_${Date.now()}.pdf`;
     await savePdf(bytes, name);

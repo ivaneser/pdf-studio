@@ -16,9 +16,11 @@ export async function mergeDocs(docs) {
     const src = await pdfLib.PDFDocument.load(doc.bytes, { ignoreEncryption: true });
     const indices = [];
     for (let p = doc.start - 1; p <= doc.end - 1; p++) indices.push(p);
+    console.log("MERGE", doc.name, "start=" + doc.start, "end=" + doc.end, "pageCount=" + doc.pageCount, "indices=", JSON.stringify(indices));
     const pages = await out.copyPages(src, indices);
     for (const page of pages) out.addPage(page);
   }
+  console.log("MERGE_DONE total_pages=", bytes.length > 0 ? "ok" : "empty");
   return out.save();
 }
 
