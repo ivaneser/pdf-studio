@@ -101,23 +101,35 @@ var BOOKMARKLET_SRC = `
     if (!name){ try { var q=a.href.split('?')[0]; name=decodeURIComponent(q.substring(q.lastIndexOf('/')+1))||'file.pdf'; } catch(e){ name='file.pdf'; } }
     return {url:a.href, name:name};
   }
+  function getVisiblePdfRows(){
+    var rows=[];
+    var cands=document.querySelectorAll('tr[role="row"], [data-automation-id^="gridRow"]');
+    for (var i=0;i<cands.length;i++){ if(urlForRow(cands[i])) rows.push(cands[i]); }
+    return rows;
+  }
 
   async function run(){
     setStatus('Reading selection...');
     var rows=getSelectedFromDom();
-    if (!rows.length){ alert('No files selected. Tick checkboxes for the PDFs you want, then click again.'); return; }
+    if (!rows.length){
+      var all=getVisiblePdfRows();
+      if (!all.length){ alert('No files found in the current view. Switch to "Details" view.'); return; }
+      if (!confirm(all.length+' PDF file(s) are visible here. Take all of them?')) { setStatus('Cancelled.'); return; }
+      rows=all;
+    }
     setStatus('Downloading '+rows.length+' file(s)...');
-    var ctrl=new AbortController(); setTimeout(function(){ctrl.abort();},120000);
+    var ctrl=new AbortController(); setTimeout(function(){ctrl.abort();},60000);
     var items=[];
     for (var i=0;i<rows.length;i++){ try { var info=urlForRow(rows[i]); if(!info) continue; setStatus('Downloading: '+info.name); items.push({name:info.name, bytes:await fetchBytes(info.url,ctrl.signal)}); } catch(e){ setStatus('Failed to download one file: '+e.message); } }
     if (!items.length){ alert('Could not download any of the selected files.'); return; }
+    console.log('[PDF Studio] Downloaded items:', items.map(function(x){return x.name;}));
 
     var studio=window.open(STUDIO_URL,'_blank','noopener');
     if (!studio){ alert('Popup blocked. Allow popups for this site and try again.'); return; }
     var tries=0, timer=setInterval(function(){
       if (studio.closed){ clearInterval(timer); return; }
       try { if (studio.postMessage && studio.postReady){ clearInterval(timer); studio.postMessage({type:'PS_IMPORT_FILES', files:items}, '*'); setStatus('Sent '+items.length+' file(s) to PDF Studio.'); return; } } catch(e){}
-      if (++tries>300){ clearInterval(timer); try{studio.postMessage({type:'PS_IMPORT_FILES',files:items},'*');}catch(e){} }
+      if (++tries>200){ clearInterval(timer); try{studio.postMessage({type:'PS_IMPORT_FILES',files:items},'*');}catch(e){} }
     },100);
   }
   run();

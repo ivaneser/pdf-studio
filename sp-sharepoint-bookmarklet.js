@@ -4,13 +4,16 @@
 //   1. Drag the link below to your bookmarks bar (or create a new bookmark and
 //      paste the whole javascript:... code as its URL).
 //   2. Open a modern SharePoint List or Document Library view.
-//   3. Tick checkboxes for the PDFs you want (or click "Select all" in the header).
-//   4. Click the bookmarklet -> it opens pdf-studio and sends the selected files.
+//   3. Tick checkboxes for the PDFs you want, OR just click the bookmarklet —
+//      it will ask to take all visible PDFs automatically.
+//   4. Click the bookmarklet -> it opens pdf-studio and sends the files.
 //
 // HOW IT WORKS:
 //   - Reads the currently-selected rows from the modern grid's selection model.
 //     If that isn't available, falls back to scanning checked checkboxes in the DOM.
-//   - For each selected file it fetches the raw PDF bytes directly from SharePoint
+//   - If nothing is selected, asks (confirm dialog) whether to take all visible
+//     PDFs in the current view.
+//   - For each file it fetches the raw PDF bytes directly from SharePoint
 //     (same-origin -> your login cookies are sent automatically, no auth needed).
 //   - Opens https://ivaneser.github.io/pdf-studio/ via window.open() and postMessages
 //     {name, bytes} into it. pdf-studio injects each file through store.add().
@@ -94,14 +97,37 @@
     return { url: a.href, name: name };
   }
 
+  // Collect all rows that contain a .pdf file link (skip non-PDFs like .md).
+  function getVisiblePdfRows() {
+    var rows = [];
+    var candidates = document.querySelectorAll('tr[role="row"], [data-automation-id^="gridRow"]');
+    for (var i = 0; i < candidates.length; i++) {
+      if (urlForRow(candidates[i])) rows.push(candidates[i]);
+    }
+    return rows;
+  }
+
   // ---- Main ------------------------------------------------------------------
 
   async function run() {
     setStatus('Reading selection...');
     var rows = getSelectedFromDom();
+
+    // Nothing explicitly selected -> offer to take all visible PDFs.
     if (!rows.length) {
-      alert('No files selected. Tick checkboxes for the PDFs you want, then click again.');
-      return;
+      var allRows = getVisiblePdfRows();
+      if (allRows.length === 0) {
+        alert('No files found in the current view. Make sure you are on a list/library ' +
+              'with visible rows, and switch to "Details" view.');
+        return;
+      }
+      var ok = confirm(
+        'Nothing is ticked yet.' +
+        '\n\n' + allRows.length + ' PDF file(s) are visible in this view. ' +
+        'Take all of them?' +
+        '\n\nOK = take all visible PDFs\nCancel = nothing');
+      if (!ok) { setStatus('Cancelled.'); return; }
+      rows = allRows;
     }
 
     setStatus('Downloading ' + rows.length + ' file(s)...');
@@ -125,6 +151,9 @@
       alert('Could not download any of the selected files. They may be protected or not valid PDFs.');
       return;
     }
+
+    console.log('[PDF Studio] Downloaded items:', items.map(function (x) { return x.name; }));
+    setStatus('Downloaded ' + items.length + ' file(s). Opening pdf-studio...');
 
     // Open pdf-studio, then hand over the bytes once it has loaded.
     var studio = window.open(STUDIO_URL, '_blank', 'noopener');

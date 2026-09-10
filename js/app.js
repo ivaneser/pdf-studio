@@ -295,6 +295,9 @@ function bindRangeInputs() {
 // multiplying instead of trimming. Coalesce them into one rebuild after settling.
 let previewTimer = null;
 let pendingPreview = false;
+// Tracks whether an async build is currently in flight so schedulePreview() can
+// coalesce its ~10 calls-per-second into a single rebuild after settling.
+let buildingPreview = false;
 // While dragging the slider — DON'T emit() to rebuild the list and preview.
 // liveUpdate itself updates only this slider, then on mouseup we do one full rebuild.
 let sliderDragging = false;
@@ -310,9 +313,12 @@ function schedulePreview() {
   if (previewTimer) clearTimeout(previewTimer);
   const run = () => {
     previewTimer = null;
-    if (!pendingPreview) return buildPreview();
-    pendingPreview = false;
-    run();
+    if (buildingPreview) { pendingPreview = true; return; }
+    buildingPreview = true;
+    buildPreview().finally(() => {
+      buildingPreview = false;
+      if (pendingPreview) { pendingPreview = false; schedulePreview(); }
+    });
   };
   previewTimer = setTimeout(run, 120);
 }
