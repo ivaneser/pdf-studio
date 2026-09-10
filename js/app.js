@@ -652,7 +652,7 @@ printBtn.addEventListener('click', async () => {
   }
 });
 
-// External file injection (e.g. from a SharePoint bookmarklet).
+// External file injection (from an external app via postMessage).
 // Receives { type: 'PS_IMPORT_FILES', files: [{ name, bytes }] } via postMessage.
 // `bytes` may be an ArrayBuffer, Uint8Array or Blob — normalise to ArrayBuffer and
 // push each file through store.add() so the existing render/list/merge pipeline
@@ -679,112 +679,9 @@ window.addEventListener('message', (e) => {
   importExternalFiles(data.files);
 });
 
-// SharePoint: fetch the bookmarklet source at runtime and build a ready-to-use
-// drag-to-bookmarks link + copy button inline inside this "SharePoint" card.
-const SP_BM_CARD_ID = 'spBmArea';
-async function loadBookmarkletSource() {
-  try {
-    const res = await fetch('./sp-sharepoint-bookmarklet.js');
-    if (!res.ok) return null;
-    return await res.text();
-  } catch (e) { return null; }
-}
-
-// Turn the bookmarklet JS source into a javascript: URI, stripping comments and
-// collapsing whitespace so it's compact enough for a bookmarks-bar entry. The
-// stripper is string-aware (a `//` inside `'https://...'` must NOT be treated as
-// a line comment — otherwise STUDIO_URL gets mangled).
-function makeBookmarklet(src) {
-  let out = '';
-  let i = 0;
-  while (i < src.length) {
-    const c = src[i], next = src[i + 1];
-    if (c === '/' && next === '/') { // line comment -> skip to newline
-      let j = i + 2;
-      while (j < src.length && src[j] !== '\n') j++;
-      out += ' '; i = j; continue;
-    }
-    if (c === '/' && next === '*') { // block comment -> skip to */
-      let j = i + 2;
-      while (j < src.length && !(src[j] === '*' && src[j + 1] === '/')) j++;
-      out += ' '; i = j + 2; continue;
-    }
-    if (c === '\'' || c === '"' || c === '`') { // string literal -> copy verbatim
-      const q = c; out += c; i++;
-      while (i < src.length && src[i] !== q) {
-        if (src[i] === '\\') { out += src[i] + (src[i + 1] || ''); i += 2; continue; }
-        out += src[i]; i++;
-      }
-      out += src[i] || ''; i++; continue;
-    }
-    out += c; i++;
-  }
-  return 'javascript:' + out.replace(/\s+/g, ' ').trim();
-}
-
-async function openSharePointBookmarklet() {
-  const area = document.getElementById(SP_BM_CARD_ID);
-  if (!area) return;
-
-  // Make sure the card is expanded when the button is pressed.
-  const details = document.getElementById('spBmDetails');
-  if (details) details.open = true;
-
-  area.innerHTML = '';
-  setStatus('Loading bookmarklet...');
-
-  const src = await loadBookmarkletSource();
-  if (!src) {
-    area.innerHTML = `<p class="hint">Could not load the bookmarklet source from this page. Try downloading <a href="./sp-sharepoint-bookmarklet.js" download>sp-sharepoint-bookmarklet.js</a> and pasting it into a new bookmark.</p>`;
-    setStatus('Bookmarklet source unavailable');
-    return;
-  }
-
-  const url = makeBookmarklet(src);
-  const esc = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-  area.innerHTML = `
-    <p class="hint">Tick PDFs on a SharePoint list, then click this link. pdf-studio opens and receives the files.</p>
-    <a id="spBmLink" href="${esc(url)}" class="sp-bm-drag" title="PDF Studio" download="PDF Studio.bookmark">📥 Drag me to your bookmarks bar</a>
-    <button id="spBmCopy" class="btn btn-primary">Copy URL</button>
-    <div id="spBmStatus" class="hint"></div>`;
-
-  area.querySelector('#spBmLink').addEventListener('click', (e) => {
-    // Provide the plain javascript: URI for copy dialogs / drag previews.
-    e.preventDefault();
-    const a = document.createElement('a');
-    a.href = url;
-    a.textContent = url;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    if (navigator.share) { navigator.share({ title: 'PDF Studio SharePoint bookmarklet', url }).catch(() => {}); }
-    else if (window.open) window.open(url, '_blank');
-    a.remove();
-  });
-
-  area.querySelector('#spBmCopy').addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setStatus('Bookmarklet URL copied to clipboard');
-    } catch (e) {
-      // Fallback for older browsers.
-      const ta = document.createElement('textarea');
-      ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
-      document.body.appendChild(ta); ta.select();
-      try { document.execCommand('copy'); setStatus('Bookmarklet URL copied to clipboard'); }
-      catch (e2) { setStatus('Copy failed — drag the link above instead'); }
-      ta.remove();
-    }
-  });
-
-  setStatus('SharePoint bookmarklet ready');
-}
-
-document.getElementById('spBmBtn').addEventListener('click', openSharePointBookmarklet);
-
 // Initialization — empty list
 renderList();
 
-// Signal to external windows (e.g. the SharePoint bookmarklet) that we are loaded
+// Signal to external windows (via postMessage) that we are loaded
 // and can receive postMessage { type: 'PS_IMPORT_FILES', files }.
 window.postReady = true;
