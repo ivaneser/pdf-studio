@@ -252,7 +252,12 @@ function bindRangeInputs() {
       const raw = parseInt(input.value, 10);
       if (Number.isNaN(raw)) return; // ignore empty / non-numeric input
       const role = input.dataset.role;
-      let value = Math.max(1, Math.min(doc.pageCount, raw));
+      // Out-of-range entry reverts to the CURRENT slider position (doc.start for
+      // start, doc.end for end) instead of snapping to a hard boundary (1 or
+      // pageCount). This keeps the field in sync with where the thumb actually is
+      // — typing "999" won't jump the thumb to the last page if it was on page 3.
+      const current = role === 'start' ? doc.start : doc.end;
+      let value = raw < 1 || raw > doc.pageCount ? Math.max(1, Math.min(doc.pageCount, current)) : raw;
       rangeEditing = true;
       try {
         if (role === 'start') {
