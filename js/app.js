@@ -252,16 +252,16 @@ function bindRangeInputs() {
       const raw = parseInt(input.value, 10);
       if (Number.isNaN(raw)) return; // ignore empty / non-numeric input
       const role = input.dataset.role;
-      // Out-of-range entry reverts to the NEAREST boundary of the field's allowed
-      // range — NOT a hard clamp (1 or pageCount) and NOT the current value. This is
-      // what "99" or "0" should collapse to:
-      //   start: allowed range is [1, min(end, totalPages)]  -> out-of-range snaps here
-      //   end:   allowed range is [max(1, start), totalPages] -> out-of-range snaps here
-      // e.g. with 7 pages and end moved to 4, the start field's max becomes 4, so a
-      // stray "99" there reverts to 4 (not 1). And start=7 while end=4 snaps end back
-      // to 4 because start can never exceed end.
-      const current = role === 'start' ? Math.min(doc.end, doc.pageCount) : Math.max(1, doc.start);
-      let value = raw < 1 || raw > doc.pageCount ? Math.max(1, Math.min(doc.pageCount, current)) : raw;
+      // Allowed range for this field is bounded by its neighbour, not just [1, pageCount]:
+      //   start: [1, min(end, totalPages)]  -> below lower bound snaps to 1, above upper bound snaps to end
+      //   end:   [start, totalPages]        -> below lower bound snaps to start, above upper bound snaps to totalPages
+      const lo = role === 'start' ? 1 : doc.start;
+      const hi = role === 'start' ? Math.min(doc.end, doc.pageCount) : doc.pageCount;
+      // Snap the typed value into [lo, hi]. Out-of-range entries (e.g. "99", "0") revert to
+      // the nearest boundary of THIS field's allowed range — NOT a hard 1/pageCount and NOT
+      // the current value. e.g. 7 pages with end=4: start max is 4, so a stray "99" reverts to 4;
+      // end typed as 0 (below max(1,start)) reverts to max(1,start).
+      let value = Math.max(lo, Math.min(hi, raw));
       rangeEditing = true;
       try {
         if (role === 'start') {
