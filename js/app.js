@@ -185,8 +185,12 @@ function refreshDocSlider(doc) {
       endThumb.style.top = '-3px';
     }
   }
-  const inStart = slider.querySelector('[data-role="start"]');
-  const inEnd = slider.querySelector('[data-role="end"]');
+  // Inputs are SIBLINGS of .page-slider (both live inside .page-range), so we must
+  // search from .page-range, not from the slider. Otherwise querySelector returns null
+  // and the numeric fields never reflect corrected values after out-of-range typing.
+  const range = slider.closest('.page-range');
+  const inStart = range?.querySelector('[data-role="start"]');
+  const inEnd = range?.querySelector('[data-role="end"]');
   if (inStart) inStart.value = doc.start;
   if (inEnd) inEnd.value = doc.end;
 }
